@@ -6,19 +6,21 @@ import { describeFromVideo, bestMatch, loadModels } from "../lib/face.js";
 
 export default function Scan() {
   const videoRef = useRef(null);
-  const [ready, setReady] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [match, setMatch] = useState(null); // { user, distance }
+  const [match, setMatch] = useState(null);
   const navigate = useNavigate();
 
   async function handleScan() {
-    setBusy(true); setError(null); setMatch(null);
+    setBusy(true);
+    setError(null);
+    setMatch(null);
     try {
       await loadModels();
       const descriptor = await describeFromVideo(videoRef.current);
       if (!descriptor) {
-        setError("No face detected. Center your face in the frame and try again.");
+        setError("No face detected. Centre your face in the frame and try again.");
         return;
       }
       const users = await api.listUsers();
@@ -26,21 +28,30 @@ export default function Scan() {
       if (hit) {
         setMatch(hit);
       } else {
-        // No match → off to registration, carry the descriptor along.
         navigate("/register", { state: { descriptor } });
       }
-    } catch (e) {
-      console.error(e);
-      setError(e.message || "Scan failed.");
+    } catch (err) {
+      setError(
+        err?.status === undefined || err.status >= 500
+          ? "Voting service is temporarily unavailable. Please try again."
+          : err.message || "Something went wrong. Please try again.",
+      );
     } finally {
       setBusy(false);
     }
   }
 
   async function continueAsMatched() {
-    const status = await api.voteStatus(match.user.id);
-    if (status.hasVoted) navigate("/done", { state: { userId: match.user.id, alreadyVoted: true } });
-    else navigate("/vote", { state: { userId: match.user.id } });
+    try {
+      const status = await api.voteStatus(match.user.id);
+      if (status.hasVoted) {
+        navigate("/done", { state: { userId: match.user.id, alreadyVoted: true, partyId: status.partyId } });
+      } else {
+        navigate("/vote", { state: { userId: match.user.id } });
+      }
+    } catch {
+      setError("Unable to continue right now. Please try again.");
+    }
   }
 
   return (
@@ -49,11 +60,11 @@ export default function Scan() {
       <p className="muted">Look at the camera and press <em>Scan</em>.</p>
 
       <div style={{ marginTop: 14 }}>
-        <Webcam ref={videoRef} onReady={(err) => setReady(!err)} />
+        <Webcam ref={videoRef} onReady={(err) => setCameraReady(!err)} />
       </div>
 
       <div className="row" style={{ marginTop: 16 }}>
-        <button className="btn" disabled={!ready || busy} onClick={handleScan}>
+        <button className="btn" disabled={!cameraReady || busy} onClick={handleScan}>
           {busy ? "Scanning…" : "Scan"}
         </button>
       </div>
@@ -64,20 +75,23 @@ export default function Scan() {
         <div className="panel" style={{ marginTop: 18 }}>
           <div className="identity-card">
             {match.user.referenceImageUrl && (
-              <img src={match.user.referenceImageUrl} alt={match.user.name} />
+              <img
+                src={match.user.referenceImageUrl}
+                alt={match.user.name}
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
             )}
             <div className="col" style={{ gap: 2 }}>
               <div style={{ fontWeight: 700, fontSize: 18 }}>{match.user.name}</div>
               <div className="muted" style={{ fontSize: 13 }}>
                 {match.user.emirate ?? "—"} · ID {match.user.nationalId ?? "—"}
               </div>
-              <div className="muted" style={{ fontSize: 12 }}>
-                match distance {match.distance.toFixed(3)}
-              </div>
             </div>
           </div>
           <div className="row" style={{ marginTop: 14 }}>
-            <button className="btn success" onClick={continueAsMatched}>Continue to vote →</button>
+            <button className="btn success" onClick={continueAsMatched}>
+              Continue to vote
+            </button>
           </div>
         </div>
       )}

@@ -13,8 +13,9 @@ export const seedUsers = [
     age: 34,
     emirate: "Abu Dhabi",
     nationalId: "784-1991-0000001-2",
-    referenceImageUrl:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop&crop=faces",
+    // pravatar serves consistent, well-cropped headshots with detectable
+    // faces and permissive CORS — Unsplash hotlink-blocks some origins.
+    referenceImageUrl: "https://i.pravatar.cc/400?img=47",
   },
   {
     id: "u_omar",
@@ -22,8 +23,7 @@ export const seedUsers = [
     age: 41,
     emirate: "Dubai",
     nationalId: "784-1984-0000002-7",
-    referenceImageUrl:
-      "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop&crop=faces",
+    referenceImageUrl: "https://i.pravatar.cc/400?img=12",
   },
 ];
 

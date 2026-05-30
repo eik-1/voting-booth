@@ -1,74 +1,122 @@
-# UAE Voting Booth — Demo
+# UAE Voting Booth
 
-A small face-scan voting demo. Walk up, scan your face, vote.
+A face-scan voting demo: walk up to the camera, register, cast a single vote.
 
-- **Frontend** — Vite + React + `face-api.js` (`packages/frontend`)
-- **Backend** — Node + Express, JSON-file persistence (`packages/backend`)
+- **Frontend** — Vite + React + face-api.js (`packages/frontend`)
+- **Backend** — Node + Express, JSON-file storage (`packages/backend`)
 - **Monorepo** — npm workspaces
-- **Deploy** — single Render Blueprint (`render.yaml`)
+- **Deploy** — two independent Render services declared in `render.yaml`
 
-> The UAE does not hold partisan elections. The five "parties" are fictional
-> and exist so the demo has buttons to press.
+> Demonstration only. The UAE does not hold partisan elections; the parties
+> shown are fictional and exist solely to illustrate the voting flow.
 
 ---
 
-## Quick start (local)
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-- Backend → http://localhost:4000
-- Frontend → http://localhost:5173
+| Service  | URL                         |
+| -------- | --------------------------- |
+| Frontend | http://localhost:5173       |
+| Backend  | http://localhost:4000       |
 
-The first time the app loads, it downloads ~6 MB of `face-api.js` model weights
-from a CDN and computes face descriptors for the two seeded demo identities.
-Watch the header status — it flips from *loading face models…* to *models ready*.
+The Vite dev server proxies `/api/*` to the backend automatically, so you
+don't need to set `VITE_API_BASE` locally.
 
-## The flow
+## Application flow
 
-1. **Home** — see registered voters (two seeds: Aisha Al Mansouri & Omar Al Hashimi).
-2. **Scan** — webcam captures a face. If it matches a known voter, their card pops up.
-3. **Register** — if no match, fill in info + capture face.
-4. **Vote** — pick one of five fictional UAE platforms.
-5. **Done** — live tally bars. Trying to vote twice is rejected.
-
-## Demo-ing face matching
-
-The two seeded users have reference photos hosted on Unsplash. On first load the
-frontend runs them through `face-api.js` to produce a descriptor. Since you
-(probably) don't look like an Unsplash stock model, your first scan won't match —
-you'll get sent to `/register`, register yourself, and from then on your scan
-matches you.
-
-To reset and start over:
-```bash
-curl -X POST http://localhost:4000/api/_reset
-```
+1. **Home** — see the registry of voters.
+2. **Scan** — webcam captures a face. If it matches a registered voter, their
+   card appears and you can continue to vote.
+3. **Register** — first-time voters provide their details and capture a face.
+4. **Vote** — choose one of five parties. Re-voting is rejected server-side.
+5. **Confirmation** — live tally bars; subsequent scans of the same voter
+   land here.
 
 ---
 
-## Deploying on Render
+## Deploying to Render
 
-1. Push this repo to GitHub.
-2. In Render: **New → Blueprint**, pick the repo. Render reads `render.yaml`.
-3. One service comes up:
-   - `voting-booth` — Node web service that builds the frontend and serves
-     both the SPA and the `/api/*` routes on the same origin.
-4. When the service is "Live", open its URL. No env vars to wire.
+### 1. Push to GitHub
 
-### Notes
+```bash
+git init && git add . && git commit -m "initial"
+gh repo create voting-booth --public --source=. --push
+```
 
-- The backend persists to `packages/backend/data/db.json` — on Render's
-  free plan disks aren't persistent across redeploys; votes will reset.
-  For real persistence add a Render Disk or swap in Postgres.
-- `face-api.js` weights load from the public CDN at
-  `https://justadudewhohacks.github.io/face-api.js/models`. If that ever
-  disappears, drop the model files into `packages/frontend/public/models/`
-  and change `MODEL_URL` in `src/lib/face.js` to `/models`.
-- Free tier sleeps the service after ~15 min idle. First request after
-  sleep takes 30–60 s. Wake it via `<your-url>/api/health` before demoing.
+### 2. Create the Blueprint
+
+In Render: **New → Blueprint** → select the repository.
+
+Render reads `render.yaml` and provisions two services:
+
+| Service                  | Type        |
+| ------------------------ | ----------- |
+| `voting-booth-backend`   | Web service |
+| `voting-booth-frontend`  | Static site |
+
+Both services declare `sync: false` env vars, so the first deploy will create
+them but leave the values blank — that's expected.
+
+### 3. Wire the services together
+
+Once both services finish their first build:
+
+1. Copy the **backend's** public URL from its service page
+   (`https://voting-booth-backend-XXXX.onrender.com`).
+2. Open the **frontend** service → **Environment** →
+   set `VITE_API_BASE` to that URL → **Save Changes**.
+3. Trigger a frontend rebuild: **Manual Deploy → Clear build cache & deploy**.
+   This is required because Vite inlines env vars at build time.
+4. Copy the **frontend's** public URL.
+5. Open the **backend** service → **Environment** →
+   set `CORS_ORIGIN` to the frontend URL → **Save Changes**.
+   The backend restarts automatically; no cache clear needed.
+
+### 4. Verify
+
+- `GET https://<backend>/api/health` → `{"status":"ok"}`
+- `GET https://<backend>/api/parties` → JSON list of five parties
+- Open the frontend URL → "Registered voters" panel shows the two seed voters
+
+---
+
+## Configuration reference
+
+### Backend env vars
+
+| Variable      | Required | Description                                                              |
+| ------------- | -------- | ------------------------------------------------------------------------ |
+| `PORT`        | no       | Render injects this automatically.                                        |
+| `NODE_ENV`    | no       | `production` in deploys; controls Express's perf optimisations.           |
+| `CORS_ORIGIN` | yes      | Comma-separated list of allowed origins. Unset = allow all (dev only).    |
+
+### Frontend env vars
+
+| Variable          | Required | Description                                                                  |
+| ----------------- | -------- | ---------------------------------------------------------------------------- |
+| `VITE_API_BASE`   | yes      | Public URL of the backend (e.g. `https://voting-booth-backend.onrender.com`). |
+
+> Vite inlines `VITE_*` variables at build time. Changes require a redeploy
+> with cache cleared on the frontend service.
+
+---
+
+## API reference
+
+| Method | Path                          | Purpose                                          |
+| ------ | ----------------------------- | ------------------------------------------------ |
+| GET    | `/api/health`                 | Liveness check; used by Render's health probe.   |
+| GET    | `/api/users`                  | List registered voters.                          |
+| POST   | `/api/users`                  | Register a new voter.                            |
+| GET    | `/api/parties`                | List available parties.                          |
+| GET    | `/api/users/:id/vote`         | Check whether a voter has voted.                 |
+| POST   | `/api/vote`                   | Cast a vote (409 if already voted).              |
+| GET    | `/api/results`                | Current tally.                                   |
 
 ---
 
@@ -76,40 +124,31 @@ curl -X POST http://localhost:4000/api/_reset
 
 ```
 .
-├── package.json            (workspaces)
+├── package.json            (workspaces root)
 ├── render.yaml             (deploy blueprint)
 └── packages/
     ├── backend/
     │   └── src/
-    │       ├── server.js   (Express routes)
-    │       ├── store.js    (JSON-file persistence)
-    │       └── seed.js     (2 demo identities + 5 parties)
+    │       ├── server.js
+    │       ├── store.js
+    │       └── seed.js
     └── frontend/
         └── src/
             ├── App.jsx
-            ├── lib/
-            │   ├── api.js  (fetch wrapper)
-            │   └── face.js (face-api.js helpers + matching)
+            ├── lib/{api,face}.js
             ├── components/Webcam.jsx
-            └── pages/      (Home, Scan, Register, Vote, Done)
+            └── pages/{Home,Scan,Register,Vote,Done}.jsx
 ```
 
-## API surface
+## Notes on persistence
 
-| Method | Path                          | Purpose                                  |
-|-------:|-------------------------------|------------------------------------------|
-| GET    | `/api/health`                 | health check (Render uses this)          |
-| GET    | `/api/users`                  | list voters (with descriptors)           |
-| POST   | `/api/users`                  | register new voter                       |
-| POST   | `/api/users/:id/descriptor`   | attach descriptor to existing seed user  |
-| GET    | `/api/parties`                | list parties                             |
-| GET    | `/api/users/:id/vote`         | has this user voted?                     |
-| POST   | `/api/vote`                   | cast vote (409 if already voted)         |
-| GET    | `/api/results`                | counts per party                         |
-| POST   | `/api/_reset`                 | dev-only: wipe state                     |
+The backend persists state to `packages/backend/data/db.json`. Render's free
+plan does not retain disks across deploys; registrations and votes reset on
+each redeploy. Add a Render Disk or swap in a managed database for durable
+storage.
 
-## Security disclaimer
+## Notes on free-tier behaviour
 
-This is a demo. Real biometric systems do not ship raw face descriptors over
-the wire, store them in plain JSON, or accept self-supplied voter records.
-Don't use this code to run an actual election. Obviously.
+Free-tier Render services sleep after ~15 minutes of inactivity. The first
+request after sleep takes 30–60 seconds while the instance wakes. Before
+demoing, warm the backend by hitting `/api/health` once.

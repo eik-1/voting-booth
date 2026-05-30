@@ -1,17 +1,16 @@
-import { forwardRef, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 
 const Webcam = forwardRef(function Webcam({ onReady }, ref) {
   const videoRef = useRef(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
-  // expose video element to parent
-  useEffect(() => {
-    if (typeof ref === "function") ref(videoRef.current);
-    else if (ref) ref.current = videoRef.current;
-  });
+  useImperativeHandle(ref, () => videoRef.current, []);
 
   useEffect(() => {
     let stream;
     let cancelled = false;
+
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({
@@ -19,21 +18,21 @@ const Webcam = forwardRef(function Webcam({ onReady }, ref) {
           audio: false,
         });
         if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
+          stream.getTracks().forEach((track) => track.stop());
           return;
         }
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => onReady?.();
-        }
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        video.onloadedmetadata = () => onReadyRef.current?.();
       } catch (err) {
-        console.error("camera error", err);
-        onReady?.(err);
+        if (!cancelled) onReadyRef.current?.(err);
       }
     })();
+
     return () => {
       cancelled = true;
-      if (stream) stream.getTracks().forEach((t) => t.stop());
+      if (stream) stream.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
