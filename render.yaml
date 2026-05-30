@@ -10,7 +10,9 @@ services:
     runtime: node
     plan: free
     # Run from the repo root so npm workspaces resolve correctly.
-    buildCommand: npm install && npm run build:frontend
+    # --include=dev is REQUIRED: NODE_ENV=production (below) makes npm skip
+    # devDependencies by default, which would omit Vite and break `vite build`.
+    buildCommand: npm install --include=dev && npm run build:frontend
     startCommand: npm run start:backend
     healthCheckPath: /api/health
     envVars:
