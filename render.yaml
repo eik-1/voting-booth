@@ -1,0 +1,43 @@
+# Render Blueprint — deploys both backend + frontend from this monorepo.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Layout:
+#   packages/backend  → Node web service (Express)
+#   packages/frontend → Static site (Vite build → dist/)
+#
+# After connecting this repo in Render → "New Blueprint Instance":
+#   - The backend boots on its own URL.
+#   - The frontend build reads VITE_API_BASE from the backend service URL
+#     (wired automatically via the `fromService` reference below).
+
+services:
+  - type: web
+    name: voting-booth-backend
+    runtime: node
+    plan: free
+    rootDir: packages/backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  - type: web
+    name: voting-booth-frontend
+    runtime: static
+    rootDir: packages/frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Render returns just the hostname (e.g. voting-booth-backend.onrender.com).
+      # The frontend (src/lib/api.js) prepends `https://` if the value is bare.
+      - key: VITE_API_BASE
+        fromService:
+          type: web
+          name: voting-booth-backend
+          property: host

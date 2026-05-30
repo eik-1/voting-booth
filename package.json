@@ -1,0 +1,22 @@
+{
+  "name": "voting-booth",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Face-scan voting booth demo (UAE) — Vite + React frontend, Express backend, deployable via Render Blueprint.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace packages/backend run dev",
+    "dev:frontend": "npm --workspace packages/frontend run dev",
+    "dev": "npm-run-all -p dev:backend dev:frontend",
+    "build:frontend": "npm --workspace packages/frontend run build",
+    "start:backend": "npm --workspace packages/backend start"
+  },
+  "devDependencies": {
+    "npm-run-all": "^4.1.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
