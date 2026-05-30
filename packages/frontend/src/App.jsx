@@ -5,44 +5,87 @@ import Scan from "./pages/Scan.jsx";
 import Register from "./pages/Register.jsx";
 import Vote from "./pages/Vote.jsx";
 import Done from "./pages/Done.jsx";
-import { loadModels } from "./lib/face.js";
-import { api } from "./lib/api.js";
-import { describeFromImageUrl } from "./lib/face.js";
+import { loadModels, describeFromImageUrl } from "./lib/face.js";
+import { api, API_BASE_DISPLAY } from "./lib/api.js";
 
-// Seed-photo descriptor bootstrap: on first app load we compute descriptors
-// for any seed users that don't have one yet (their reference photo URL is
-// shipped from the backend). We then PUT them back so a refresh skips the work.
-function useBootstrapSeedDescriptors() {
-  const [status, setStatus] = useState("loading");
+// Phased bootstrap so the UI can pinpoint which step failed.
+// Models loading is the only HARD requirement to mark the app "ready" —
+// seed-descriptor work runs after, and failures there are surfaced but
+// non-fatal (you can still register and vote).
+function useBootstrap() {
+  const [phase, setPhase] = useState("models");      // models | api | seeds | ready
+  const [error, setError] = useState(null);          // { where, message }
+  const [seedWarn, setSeedWarn] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // (A) face-api.js weights from CDN
       try {
         await loadModels();
-        const users = await api.listUsers();
-        const missing = users.filter((u) => !u.descriptor && u.referenceImageUrl);
-        for (const u of missing) {
-          if (cancelled) return;
-          try {
-            const desc = await describeFromImageUrl(u.referenceImageUrl);
-            if (desc) await api.attachDescriptor(u.id, desc);
-          } catch (e) {
-            console.warn("seed descriptor failed for", u.id, e);
-          }
-        }
-        if (!cancelled) setStatus("ready");
       } catch (e) {
-        console.error(e);
-        if (!cancelled) setStatus("error");
+        if (!cancelled) setError({ where: "models (CDN)", message: e.message });
+        return;
+      }
+
+      // (B) backend round-trip
+      let users;
+      try {
+        if (cancelled) return;
+        setPhase("api");
+        users = await api.listUsers();
+      } catch (e) {
+        if (!cancelled) setError({
+          where: `backend (${API_BASE_DISPLAY})`,
+          message: e.message,
+        });
+        return;
+      }
+
+      // App is functional from here — mark ready before doing the slow
+      // seed-descriptor work so the UI isn't blocked.
+      if (!cancelled) setPhase("ready");
+
+      // (C) compute descriptors for seed users that don't have them yet
+      setPhase("seeds");
+      const missing = users.filter((u) => !u.descriptor && u.referenceImageUrl);
+      const failures = [];
+      for (const u of missing) {
+        if (cancelled) return;
+        try {
+          const desc = await describeFromImageUrl(u.referenceImageUrl);
+          if (desc) await api.attachDescriptor(u.id, desc);
+          else failures.push(`${u.name}: no face detected in reference photo`);
+        } catch (e) {
+          failures.push(`${u.name}: ${e.message}`);
+        }
+      }
+      if (!cancelled) {
+        if (failures.length) setSeedWarn(failures);
+        setPhase("ready");
       }
     })();
     return () => { cancelled = true; };
   }, []);
-  return status;
+
+  return { phase, error, seedWarn };
+}
+
+function StatusBadge({ phase, error }) {
+  if (error) {
+    return <span style={{ color: "#fca5a5" }}>fail @ {error.where}</span>;
+  }
+  const label = {
+    models: "loading face models…",
+    api:    "checking backend…",
+    seeds:  "preparing seed identities…",
+    ready:  "ready",
+  }[phase];
+  return <span className="muted">{label}</span>;
 }
 
 export default function App() {
-  const status = useBootstrapSeedDescriptors();
+  const { phase, error, seedWarn } = useBootstrap();
   const location = useLocation();
 
   return (
@@ -51,12 +94,31 @@ export default function App() {
         <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
           <div className="brand"><span className="dot" />UAE Voting Booth — Demo</div>
         </Link>
-        <div className="muted" style={{ fontSize: 13 }}>
-          {status === "loading" && "loading face models…"}
-          {status === "ready"   && "models ready"}
-          {status === "error"   && "model load failed"}
+        <div style={{ fontSize: 13 }}>
+          <StatusBadge phase={phase} error={error} />
         </div>
       </header>
+
+      {error && (
+        <div className="alert error" style={{ marginBottom: 16 }}>
+          <strong>{error.where} failed.</strong>
+          <div style={{ fontFamily: "monospace", fontSize: 12, marginTop: 6 }}>
+            {error.message}
+          </div>
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            API base in this build: <code>{API_BASE_DISPLAY || "(empty — calls go to same origin)"}</code>
+          </div>
+        </div>
+      )}
+
+      {seedWarn && (
+        <div className="alert warn" style={{ marginBottom: 16 }}>
+          Seed identities could not be prepared (you can still register & vote):
+          <ul style={{ margin: "6px 0 0 18px" }}>
+            {seedWarn.map((w, i) => <li key={i} style={{ fontSize: 13 }}>{w}</li>)}
+          </ul>
+        </div>
+      )}
 
       <Routes>
         <Route path="/"          element={<Home />} />

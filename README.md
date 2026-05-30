@@ -53,11 +53,10 @@ curl -X POST http://localhost:4000/api/_reset
 
 1. Push this repo to GitHub.
 2. In Render: **New → Blueprint**, pick the repo. Render reads `render.yaml`.
-3. Two services come up:
-   - `voting-booth-backend` (web service)
-   - `voting-booth-frontend` (static site)
-4. The frontend's `VITE_API_BASE` is auto-wired to the backend hostname via
-   `fromService` in the blueprint. Free tier works.
+3. One service comes up:
+   - `voting-booth` — Node web service that builds the frontend and serves
+     both the SPA and the `/api/*` routes on the same origin.
+4. When the service is "Live", open its URL. No env vars to wire.
 
 ### Notes
 
@@ -68,6 +67,8 @@ curl -X POST http://localhost:4000/api/_reset
   `https://justadudewhohacks.github.io/face-api.js/models`. If that ever
   disappears, drop the model files into `packages/frontend/public/models/`
   and change `MODEL_URL` in `src/lib/face.js` to `/models`.
+- Free tier sleeps the service after ~15 min idle. First request after
+  sleep takes 30–60 s. Wake it via `<your-url>/api/health` before demoing.
 
 ---
 

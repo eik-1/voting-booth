@@ -1,6 +1,12 @@
 import express from "express";
 import cors from "cors";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { store } from "./store.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FRONTEND_DIST = path.resolve(__dirname, "..", "..", "frontend", "dist");
 
 const app = express();
 app.use(cors());
@@ -66,6 +72,21 @@ app.post("/api/_reset", (_req, res) => {
   store.reset();
   res.json({ ok: true });
 });
+
+// Single-service deploy: when the built frontend exists next to us, serve it
+// from the same origin. Same-origin /api calls = no CORS, no VITE_API_BASE.
+// In local dev, dist/ won't exist (Vite serves on :5173 with its own proxy),
+// so this block is a no-op there.
+if (fs.existsSync(FRONTEND_DIST)) {
+  app.use(express.static(FRONTEND_DIST));
+  // SPA fallback for any non-API GET — must come AFTER all /api routes.
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.sendFile(path.join(FRONTEND_DIST, "index.html"));
+  });
+  console.log(`[voting-booth] serving frontend from ${FRONTEND_DIST}`);
+} else {
+  console.log(`[voting-booth] no frontend dist found; API-only mode`);
+}
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => {

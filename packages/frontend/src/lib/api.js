@@ -7,6 +7,9 @@ function resolveBase() {
   return /^https?:\/\//.test(raw) ? raw : `https://${raw}`;
 }
 const BASE = resolveBase();
+// Exposed for the bootstrap UI so users can see exactly what the bundle
+// was built with — invaluable when debugging Render env-var wiring.
+export const API_BASE_DISPLAY = BASE;
 
 async function json(path, init = {}) {
   const res = await fetch(`${BASE}${path}`, {
